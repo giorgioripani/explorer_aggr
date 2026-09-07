@@ -24,7 +24,7 @@ When navigation stalls or loops persist, authority transfers to a three-phase Li
 
 ```bash
 cd ~/ros2_ws/src
-git clone [https://github.com/your-username/explorer_aggr.git](https://github.com/your-username/explorer_aggr.git)
+git clone [https://github.com/giorgioripani/explorer_aggr.git](https://github.com/your-username/explorer_aggr.git)
 cd ~/ros2_ws
 rosdep install --from-paths src -y --ignore-src
 colcon build --symlink-install --packages-select explorer_aggr
