@@ -1,54 +1,26 @@
 # explorer_aggr
 
-Autonomous frontier-based exploration package for ROS 2 and Nav2 mobile robotics platforms.
+Autonomous frontier-based exploration package for ROS 2 and Nav2 mobile platforms.
 
 ## Overview
 
-The explorer_aggr package provides a fully integrated autonomous exploration pipeline designed to navigate unknown indoor environments using 2D occupancy grids and planar LiDAR scans. Instead of relying on naive geometric centroids, the node identifies exploration boundaries using vectorized spatial filtering, scores candidates through a multi-factor heuristic, and manages edge cases through active stall monitors, trajectory loop breakers, and an autonomous reactive LiDAR recovery routine.
+The package implements an autonomous exploration pipeline for mobile robots using 2D occupancy grids and planar LiDAR scans. It extracts frontiers with vectorized NumPy operations, evaluates candidates while preventing topological collapse, and executes robust recovery behaviors during navigation deadlocks.
 
 ## Architecture and Control Modules
 
-The system is organized into two primary components working in tight coordination: the mathematical frontier extractor (`GoalSetter`) and the ROS 2 lifecycle coordinator (`CommunicationNode`).
+Frontier extraction isolates free cells bordering unknown map space. To resolve the ring topology issue where circular scans collapse the geometric mean onto the robot footprint, the algorithm selects the physical median element along the cluster, ensuring the target falls on traversable space.
 
-### Frontier Detection and Ring Topology Mitigation
-
-Frontier extraction operates through vectorized spatial shifts using NumPy arrays, identifying free map cells directly adjacent to unknown space. In typical exploration scenarios where the robot performs an initial 360-degree scan, circular or concave frontiers produce a geometric mean that collapses into the empty center, placing the candidate target directly beneath the robot base. The algorithm resolves this failure mode by extracting the physical median index along the ordered boundary coordinates rather than computing the mathematical centroid, guaranteeing that the target pose always lies on a valid, traversable boundary.
-
-### Candidate Utility Scoring and Failure Penalties
-
-Each candidate cluster is evaluated through an information-to-distance utility function where the score is proportional to cluster size and inversely proportional to the Euclidean distance from the robot pose. To prevent persistent attempts at unreachable poses behind thin walls or glass obstacles, every goal rejected or aborted by Nav2 increments a dedicated failure register tied to that coordinate. Each registered failure halves the subsequent utility score using exponential decay:
+Candidate frontiers are scored by balancing cluster size against travel distance, applying exponential decay to coordinates that previously aborted or failed:
 
 $$\text{score} = \frac{\text{size}}{\text{safe\_distance} \cdot 2^{\text{failures}}}$$
 
-### Anti-Cheat False Arrival Verification
+To prevent false positives where Nav2 reports success due to goal tolerances without genuine movement, an anti-cheat filter requires at least 10 centimeters of displacement before accepting a completed trajectory.
 
-Standard Nav2 planners mark a goal as completed once the base link falls within the configured positional arrival tolerance. When frontiers are selected close to the robot, this mechanism can trigger immediate success without generating physical movement, causing premature exploration termination. The communication node tracks initial departure coordinates and computes the physical distance traversed upon receipt of the success status. If the total displacement remains below 10 centimeters, the node flags the event as a false-positive arrival, registers a failure penalty against that target, and commands an immediate replan.
+Continuous execution safety relies on a dual-tier supervisor. An active stall inspector cancels the goal if the chassis fails to advance 5 centimeters within 20 seconds, while an overarching 70-second watchdog aborts lingering actions. A sliding history buffer tracks recent coordinates, triggering recovery if the planner ping-pongs between identical targets.
 
-### Dynamic Stall Inspector and Navigation Watchdog
+When navigation stalls or loops persist, authority transfers to a three-phase LiDAR recovery state machine. Phase 0 clusters consecutive LiDAR rays exceeding 40 centimeters of clearance and selects the median angle of the widest sector to steer cleanly through the center of doorways. Phase 1 rotates the robot toward this escape heading. Phase 2 pushes the platform forward by 40 centimeters, protected by an active emergency brake that halts motion if an obstacle appears within 22 centimeters. Once all frontiers are resolved, the node automatically dispatches Nav2 back to the starting home coordinates.
 
-To prevent indefinite deadlocks in complex geometry, the node executes a two-tier monitoring routine. An active stall inspection timer evaluates physical displacement every two seconds; if the robot fails to progress at least 5 centimeters over 20 consecutive seconds, the active action goal is formally canceled. In addition, an overarching 70-second execution watchdog disarms and aborts any trajectory that exceeds the maximum operational window, unlocking the state machine to pursue alternative frontiers.
-
-### Anti Ping-Pong History Buffer
-
-SLAM mapping latency can occasionally leave previously visited sectors marked as unexplored for several update cycles, prompting the planner to oscillate back and forth between two identical points. The node records the four most recent goal positions in a sliding history buffer. If a newly computed frontier falls within 20 centimeters of a recently visited target for three consecutive cycles, the node breaks the infinite loop, clears the buffer, bypasses Nav2, and hands over authority directly to the recovery subsystem.
-
-### Custom Reactive LiDAR Recovery Subsystem
-
-When the robot encounters severe entrapment, repeated recalculation failures, or map lag oscillations, the communication node bypasses global path planning and engages a dedicated three-phase recovery state machine. 
-
-Phase 0 performs real-time sensor fusion by projecting planar laser scans into the global costmap space. Instead of steering toward the single longest ray, which frequently clips wall corners and door jambs, the algorithm groups consecutive rays with clearance above 40 centimeters into distinct angular clusters and selects the median heading of the widest open sector. This centering technique directs the vehicle safely through the geometric center of doors and corridors.
-
-Phase 1 rotates the robot in place until the angular heading error relative to the chosen escape vector is reduced below 0.1 radians.
-
-Phase 2 executes an open-loop forward push of 40 centimeters at 0.15 meters per second. Throughout the push maneuver, an emergency collision brake inspects a 30-degree frontal cone; if an obstacle is detected within 22 centimeters of the chassis, the push is aborted instantly, bringing the robot to a complete halt before returning control to the main exploration loop.
-
-### Return to Home (RTH)
-
-Upon startup, the node records the initial valid robot pose in the map frame. When the mathematical module verifies that all valid frontier clusters have been resolved and the environment is completely mapped, the exploration phase transitions to completion and automatically commands Nav2 to return to the original home coordinates.
-
-## Installation and Execution
-
-Clone the package inside the source directory of your active ROS 2 workspace, resolve required dependencies via rosdep, and compile using colcon:
+## Installation and Launch
 
 ```bash
 cd ~/ros2_ws/src
@@ -57,3 +29,4 @@ cd ~/ros2_ws
 rosdep install --from-paths src -y --ignore-src
 colcon build --symlink-install --packages-select explorer_aggr
 source install/setup.bash
+ros2 launch explorer_aggr exploration.launch.py use_sim_time:=true
