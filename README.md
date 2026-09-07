@@ -12,7 +12,7 @@ Frontier extraction isolates free cells bordering unknown map space. To resolve 
 
 Candidate frontiers are scored by balancing cluster size against travel distance, applying exponential decay to coordinates that previously aborted or failed:
 
-$$\text{score} = \frac{\text{size}}{\text{safe\_distance} \cdot 2^{\text{failures}}}$$
+$$\text{score} = \frac{\text{size}}{\text{safedistance} \cdot 2^{\text{failures}}}$$
 
 To prevent false positives where Nav2 reports success due to goal tolerances without genuine movement, an anti-cheat filter requires at least 10 centimeters of displacement before accepting a completed trajectory.
 
