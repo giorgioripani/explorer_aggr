@@ -4,7 +4,7 @@ Autonomous frontier-based exploration package for ROS 2 and Nav2 mobile platform
 
 ## Overview
 
-The package implements an autonomous exploration pipeline for mobile robots using 2D occupancy grids and planar LiDAR scans. It extracts frontiers with vectorized NumPy operations, evaluates candidates while preventing topological collapse, and executes robust recovery behaviors during navigation deadlocks.
+The package implements an autonomous exploration pipeline for mobile robots using 2D occupancy grids and planar LiDAR scans. It extracts frontiers with vectorized NumPy operations, evaluates candidates and executes robust recovery behaviors during navigation deadlocks.
 
 ## Architecture and Control Modules
 
